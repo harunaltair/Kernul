@@ -5,6 +5,9 @@ env:
   OUT_DIR: "out"
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -125,5 +128,38 @@ jobs:
       - name: "🎶 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
-          args: ${{ steps.generate](#)
-
+          args: ${{ steps.generate-args.outputs.args }}
+        run: |
+          make ${args}
+
+      - name: "📦 Upload Kernel Image"
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image-ASGARD-${{ env.kernelBranch }}
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "📦 Upload Image.gz"
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image.gz-ASGARD-${{ env.kernelBranch }}
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "📦 Upload DTB"
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtb-ASGARD-${{ env.kernelBranch }}
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtb
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "📦 Upload DTBO.img"
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtbo.img-ASGARD-${{ env.kernelBranch }}
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
+          if-no-files-found: ignore
+          retention-days: 7
