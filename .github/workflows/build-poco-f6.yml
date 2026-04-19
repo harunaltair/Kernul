@@ -1,4 +1,4 @@
-name: "Build ASGARD Kernel - Poco F6 (No KernelSU)"
+name: "Build Peridot SM8635 Kernel - GKI (No KernelSU)"
 
 env:
   CONFIGURATION: "repos.json"
@@ -28,7 +28,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
   Build-Kernel:
-    name: "🔨 Build ASGARD Kernel"
+    name: "🔨 Build Peridot GKI Kernel"
     runs-on: ubuntu-latest
     needs:
       - Set-repos
@@ -43,7 +43,6 @@ jobs:
       kernelRepo: ${{ matrix.repos.kernelSource.repo }}
       kernelBranch: ${{ matrix.repos.kernelSource.branch }}
       kernelDevice: ${{ matrix.repos.kernelSource.device }}
-      DEFCONFIG_NAME: ${{ matrix.repos.kernelSource.device }}_defconfig
       withKernelSU: ${{ matrix.repos.withKernelSU }}
 
     steps:
@@ -118,12 +117,22 @@ jobs:
           fi
           echo "args=$args" >> $GITHUB_OUTPUT
 
-      - name: "👍 Make defconfig"
+      - name: "👍 Configure kernel (GKI + Peridot)"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
           args: ${{ steps.generate-args.outputs.args }}
         run: |
-          make ${{ env.args }} ${{ env.DEFCONFIG_NAME }}
+          # Build GKI base config
+          make ${{ env.args }} gki_defconfig
+          
+          # Merge vendor peridot GKI config
+          if [ -f "vendor/peridot_GKI.config" ]; then
+            echo "Merging vendor/peridot_GKI.config..."
+            cat vendor/peridot_GKI.config >> .config
+            make ${{ env.args }} olddefconfig
+          else
+            echo "Warning: vendor/peridot_GKI.config not found"
+          fi
 
       - name: "🎶 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
@@ -135,31 +144,31 @@ jobs:
       - name: "📦 Upload Kernel Image"
         uses: actions/upload-artifact@v4
         with:
-          name: Image-ASGARD-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image
+          name: Image-Peridot-GKI
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image
           if-no-files-found: ignore
           retention-days: 7
 
       - name: "📦 Upload Image.gz"
         uses: actions/upload-artifact@v4
         with:
-          name: Image.gz-ASGARD-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz
+          name: Image.gz-Peridot-GKI
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz
           if-no-files-found: ignore
           retention-days: 7
 
       - name: "📦 Upload DTB"
         uses: actions/upload-artifact@v4
         with:
-          name: dtb-ASGARD-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtb
+          name: dtb-Peridot-GKI
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtb
           if-no-files-found: ignore
           retention-days: 7
 
       - name: "📦 Upload DTBO.img"
         uses: actions/upload-artifact@v4
         with:
-          name: dtbo.img-ASGARD-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
+          name: dtbo.img-Peridot-GKI
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtbo.img
           if-no-files-found: ignore
           retention-days: 7
