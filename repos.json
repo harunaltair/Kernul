@@ -1,9 +1,9 @@
 [
   {
     "kernelSource": {
-      "name": "ASGARD-Peridot",
-      "repo": "https://github.com/saitama-droid/asgard_kernel_peridot",
-      "branch": "clo_12500-lts-2025_09_r5",
+      "name": "Peridot-SM8635",
+      "repo": "https://github.com/peridot-dev/android_kernel_xiaomi_sm8635",
+      "branch": "lineage-23.2",
       "device": "peridot"
     },
     "withKernelSU": false,
