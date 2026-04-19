@@ -1,4 +1,3 @@
-
 name: "Build ASGARD Kernel - Poco F6 (No KernelSU)"
 
 env:
@@ -51,7 +50,7 @@ jobs:
       - name: "⭐ Install prerequisites"
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc curl git zip ftp gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev lftp zstd wget libfl-dev python2 python3 libarchive-tools
+          sudo apt-get install -y build-essential bc curl git zip ftp gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev lftp zstd wget libfl-dev python3 libarchive-tools
 
       - name: "🌟 Clone kernel source"
         working-directory: ./${{ env.kernelDir }}
@@ -126,38 +125,5 @@ jobs:
       - name: "🎶 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
-          args: ${{ steps.generate-args.outputs.args }}
-        run: |
-          make ${args}
-
-      - name: "📦 Upload Kernel Image"
-        uses: actions/upload-artifact@v4
-        with:
-          name: Image-ASGARD-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: "📦 Upload Image.gz"
-        uses: actions/upload-artifact@v4
-        with:
-          name: Image.gz-ASGARD-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: "📦 Upload DTB"
-        uses: actions/upload-artifact@v4
-        with:
-          name: dtb-ASGARD-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtb
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: "📦 Upload DTBO.img"
-        uses: actions/upload-artifact@v4
-        with:
-          name: dtbo.img-ASGARD-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
-          if-no-files-found: ignore
-          retention-days: 7
+          args: ${{ steps.generate](#)
+
