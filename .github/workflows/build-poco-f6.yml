@@ -37,6 +37,7 @@ jobs:
       fail-fast: false
       matrix:
         repos: ${{ fromJSON(needs.Set-repos.outputs.repos) }}
+
     env:
       kernelDir: ${{ matrix.repos.kernelSource.name }}_${{ matrix.repos.kernelSource.device }}
       kernelName: ${{ matrix.repos.kernelSource.name }}
@@ -52,7 +53,10 @@ jobs:
       - name: "⭐ Install prerequisites"
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc curl git zip ftp gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev lftp zstd wget libfl-dev python3 libarchive-tools
+          sudo apt-get install -y \
+            build-essential bc curl git zip ftp \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            libssl-dev lftp zstd wget libfl-dev python3 libarchive-tools jq
 
       - name: "🌟 Clone kernel source"
         working-directory: ./${{ env.kernelDir }}
@@ -66,14 +70,18 @@ jobs:
         run: |
           toolchains_num="$(echo $toolchains | jq 'length')"
           echo "Downloading $toolchains_num toolchains..."
+
           for ((i=0;i<toolchains_num;i++)); do
             name=$(echo $toolchains | jq -r ".[$i].name")
             repo=$(echo $toolchains | jq -r ".[$i].repo")
             branch=$(echo $toolchains | jq -r ".[$i].branch")
+
             git clone --recursive --branch $branch $repo $name --depth=1
+
             echo "$(pwd)/$name/" >> $GITHUB_PATH
             echo "$(pwd)/$name/bin" >> $GITHUB_PATH
           done
+
           echo "Toolchains ready"
 
       - name: "😎 Set build arguments"
@@ -85,18 +93,20 @@ jobs:
           ARCH=$(echo $params | jq -r ".ARCH")
           CROSS_COMPILE=$(echo $params | jq -r ".CROSS_COMPILE")
           CROSS_COMPILE_COMPAT=$(echo $params | jq -r ".CROSS_COMPILE_COMPAT")
-          CROSS_COMPILE_ARM32=$(echo $params | jq -r ".CROSS_COMPILE_ARM32")
           CLANG_TRIPLE=$(echo $params | jq -r ".CLANG_TRIPLE")
           AR=$(echo $params | jq -r ".AR")
           CC=$(echo $params | jq -r ".CC")
 
           echo "ARCH=$ARCH" >> $GITHUB_ENV
 
+          KERNEL_PATH=$(pwd)/${{ env.kernelName }}
+          OUT_PATH=$KERNEL_PATH/${{ env.OUT_DIR }}
+
+          mkdir -p $OUT_PATH
+
           args="-j$(nproc --all)"
-          if [ -n "${{ env.OUT_DIR }}" ]; then
-            mkdir -p $(pwd)/${{ env.OUT_DIR }}
-            args="$args O=$(pwd)/${{ env.OUT_DIR }}"
-          fi
+          args="$args O=$OUT_PATH"
+
           if [ -n "$ARCH" ]; then
             args="$args ARCH=$ARCH"
           fi
@@ -115,35 +125,37 @@ jobs:
           if [ -n "$CC" ]; then
             args="$args CC=$CC"
           fi
+
+          echo "args=$args"
           echo "args=$args" >> $GITHUB_OUTPUT
-      - name: "🧹 Clean source (mrproper)"
+
+      - name: "🧹 Clean output"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         run: |
-          make ARCH=arm64 mrproper
-    
+          rm -rf ${{ env.OUT_DIR }}
+
       - name: "👍 Configure kernel (GKI + Peridot)"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
-         args: ${{ steps.generate-args.outputs.args }}
+          args: ${{ steps.generate-args.outputs.args }}
         run: |
-         # HARD CLEAN (wajib di CI)
-         rm -rf ${{ env.OUT_DIR }}
+          echo "Using args: $args"
 
-         # Generate base config (GKI)
-         make ${{ env.args }} gki_defconfig
+          # Base config
+          make $args gki_defconfig
 
-         # Merge vendor config ke OUT config (bukan root!)
-         cat arch/arm64/configs/vendor/peridot_GKI.config >> ${{ env.OUT_DIR }}/.config
+          # Merge vendor config INTO OUT
+          cat arch/arm64/configs/vendor/peridot_GKI.config >> ${{ env.OUT_DIR }}/.config
 
-         # Finalize config
-         make ${{ env.args }} olddefconfig
-        
+          # Finalize config
+          make $args olddefconfig
+
       - name: "🎶 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
           args: ${{ steps.generate-args.outputs.args }}
         run: |
-          make ${args}
+          make $args
 
       - name: "📦 Upload Kernel Image"
         uses: actions/upload-artifact@v4
