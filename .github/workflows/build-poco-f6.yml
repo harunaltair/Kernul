@@ -124,14 +124,20 @@ jobs:
       - name: "👍 Configure kernel (GKI + Peridot)"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
-          args: ${{ steps.generate-args.outputs.args }}
+         args: ${{ steps.generate-args.outputs.args }}
         run: |
-          # Build GKI base config
-          make ${{ env.args }} gki_defconfig
-          
-          # Append vendor peridot GKI config (exact path from repo)
-          cat arch/arm64/configs/vendor/peridot_GKI.config >> .config
-          make ${{ env.args }} olddefconfig
+         # HARD CLEAN (wajib di CI)
+         rm -rf ${{ env.OUT_DIR }}
+
+         # Generate base config (GKI)
+         make ${{ env.args }} gki_defconfig
+
+         # Merge vendor config ke OUT config (bukan root!)
+         cat arch/arm64/configs/vendor/peridot_GKI.config >> ${{ env.OUT_DIR }}/.config
+
+         # Finalize config
+         make ${{ env.args }} olddefconfig
+        
       - name: "🎶 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
