@@ -125,15 +125,9 @@ jobs:
           # Build GKI base config
           make ${{ env.args }} gki_defconfig
           
-          # Merge vendor peridot GKI config
-          if [ -f "vendor/peridot_GKI.config" ]; then
-            echo "Merging vendor/peridot_GKI.config..."
-            cat vendor/peridot_GKI.config >> .config
-            make ${{ env.args }} olddefconfig
-          else
-            echo "Warning: vendor/peridot_GKI.config not found"
-          fi
-
+          # Append vendor peridot GKI config (exact path from repo)
+          cat arch/arm64/configs/vendor/peridot_GKI.config >> .config
+          make ${{ env.args }} olddefconfig
       - name: "🎶 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
