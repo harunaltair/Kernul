@@ -3,7 +3,7 @@
     "kernelSource": {
       "name": "Peridot-SM8635-GKI",
       "repo": "https://github.com/peridot-dev/android_kernel_xiaomi_sm8635",
-      "branch": "main",
+      "branch": "lineage-23.2",
       "device": "peridot"
     },
     "withKernelSU": false,
