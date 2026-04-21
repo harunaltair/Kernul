@@ -116,7 +116,11 @@ jobs:
             args="$args CC=$CC"
           fi
           echo "args=$args" >> $GITHUB_OUTPUT
-
+      - name: "🧹 Clean source (mrproper)"
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        run: |
+          make ARCH=arm64 mrproper
+    
       - name: "👍 Configure kernel (GKI + Peridot)"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         env:
