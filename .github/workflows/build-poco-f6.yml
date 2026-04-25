@@ -27,7 +27,7 @@ on:
 env:
   # ── Kernel source ────────────────────────────────────────────
   KERNEL_REPO: https://github.com/LineageOS/android_kernel_xiaomi_sm8635
-  KERNEL_BRANCH: lineage-22.2
+  KERNEL_BRANCH: lineage-23.2
   KERNEL_DEFCONFIG: vendor/peridot_defconfig
 
   # ── Toolchain: XClang / LLVM 22.1.2 ─────────────────────────
