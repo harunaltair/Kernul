@@ -1,198 +1,293 @@
-name: "Build Peridot SM8635 Kernel - GKI (No KernelSU)"
-
-env:
-  CONFIGURATION: "repos.json"
-  OUT_DIR: "out"
+name: 🌙 Build SleepX Kernel
 
 on:
   push:
-    branches:
-      - main
+    branches: [main, stable]
+    paths-ignore:
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Create GitHub Release?'
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release tag (e.g. v1.1)'
+        required: false
+        default: ''
+      release_notes:
+        description: 'Changelog / release notes'
+        required: false
+        default: ''
+
+env:
+  # ── Kernel source ────────────────────────────────────────────
+  KERNEL_REPO: https://github.com/LineageOS/android_kernel_xiaomi_sm8635
+  KERNEL_BRANCH: lineage-22.2
+  KERNEL_DEFCONFIG: vendor/peridot_defconfig
+
+  # ── Toolchain: XClang / LLVM 22.1.2 ─────────────────────────
+  CLANG_URL: https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.2/clang+llvm-22.1.2-x86_64-linux-gnu.tar.xz
+
+  # ── AnyKernel3 ───────────────────────────────────────────────
+  ANYKERNEL_REPO: https://github.com/sleep-bugy/SleepX-AK3
+  ANYKERNEL_BRANCH: main
+
+  # ── Build info ───────────────────────────────────────────────
+  ARCH: arm64
+  DEVICE: peridot
+  KERNEL_NAME: SleepX
 
 jobs:
-  Set-repos:
-    name: "🐂 Parse repos.json"
-    runs-on: ubuntu-latest
-    outputs:
-      repos: ${{ steps.generate-matrix.outputs.repos }}
-    steps:
-      - name: "😄 Checkout"
-        uses: actions/checkout@v4
-
-      - name: "😆 Generate Matrix"
-        id: generate-matrix
-        run: |
-          echo "repos<<EOF" >> $GITHUB_OUTPUT
-          cat ${{ env.CONFIGURATION }} >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-  Build-Kernel:
-    name: "🔨 Build Peridot GKI Kernel"
-    runs-on: ubuntu-latest
-    needs:
-      - Set-repos
-    strategy:
-      max-parallel: 1
-      fail-fast: false
-      matrix:
-        repos: ${{ fromJSON(needs.Set-repos.outputs.repos) }}
-
-    env:
-      kernelDir: ${{ matrix.repos.kernelSource.name }}_${{ matrix.repos.kernelSource.device }}
-      kernelName: ${{ matrix.repos.kernelSource.name }}
-      kernelRepo: ${{ matrix.repos.kernelSource.repo }}
-      kernelBranch: ${{ matrix.repos.kernelSource.branch }}
-      kernelDevice: ${{ matrix.repos.kernelSource.device }}
-      withKernelSU: ${{ matrix.repos.withKernelSU }}
+  build:
+    name: 🔨 Build Kernel
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
 
     steps:
-      - name: "✨ Create working dir"
-        run: mkdir -p $kernelDir
-
-      - name: "⭐ Install prerequisites"
+      # ─── 1. Dependencies ──────────────────────────────────────
+      - name: 📦 Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-          build-essential bc curl git zip ftp \
-          gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-          libssl-dev lftp zstd wget libfl-dev python3 libarchive-tools jq \
-          flex bison
-      - name: "🌟 Clone kernel source"
-        working-directory: ./${{ env.kernelDir }}
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ca-certificates cpio flex git \
+            kmod libelf-dev libssl-dev make python3 unzip wget zip zstd \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu
+
+      # ─── 2. Build variables ───────────────────────────────────
+      - name: 🔖 Set build variables
+        id: vars
         run: |
-          git clone --recursive --branch $kernelBranch $kernelRepo $kernelName --depth=1
+          DATE=$(date +'%Y%m%d')
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          VERSION="${{ github.event.inputs.release_tag }}"
+          [ -z "$VERSION" ] && VERSION="${DATE}-${SHORT_SHA}"
+          ZIPNAME="${{ env.KERNEL_NAME }}-${{ env.DEVICE }}-${VERSION}.zip"
 
-      - name: "💫 Get toolchains"
-        working-directory: ./${{ env.kernelDir }}
-        env:
-          toolchains: "${{ toJSON(matrix.repos.toolchains) }}"
+          echo "DATE=$DATE"           >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION"     >> $GITHUB_OUTPUT
+          echo "ZIPNAME=$ZIPNAME"     >> $GITHUB_OUTPUT
+
+          echo "### 🌙 SleepX Kernel Build"             >> $GITHUB_STEP_SUMMARY
+          echo "| Key | Value |"                         >> $GITHUB_STEP_SUMMARY
+          echo "|-----|-------|"                         >> $GITHUB_STEP_SUMMARY
+          echo "| Device | peridot (SM8635) |"          >> $GITHUB_STEP_SUMMARY
+          echo "| Source | LineageOS/android_kernel_xiaomi_sm8635 |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ env.KERNEL_BRANCH }} |"  >> $GITHUB_STEP_SUMMARY
+          echo "| Compiler | XClang / LLVM 22.1.2 |"    >> $GITHUB_STEP_SUMMARY
+          echo "| Version | ${VERSION} |"                >> $GITHUB_STEP_SUMMARY
+
+      # ─── 3. Checkout kernel source ────────────────────────────
+      - name: 📥 Checkout kernel source
         run: |
-          toolchains_num="$(echo $toolchains | jq 'length')"
-          echo "Downloading $toolchains_num toolchains..."
+          git clone --depth=1 \
+            -b ${{ env.KERNEL_BRANCH }} \
+            ${{ env.KERNEL_REPO }} \
+            kernel
+          echo "✅ Kernel source ready"
+          # Print kernel version dari Makefile
+          head -5 kernel/Makefile
 
-          for ((i=0;i<toolchains_num;i++)); do
-            name=$(echo $toolchains | jq -r ".[$i].name")
-            repo=$(echo $toolchains | jq -r ".[$i].repo")
-            branch=$(echo $toolchains | jq -r ".[$i].branch")
-
-            git clone --recursive --branch $branch $repo $name --depth=1
-
-            echo "$(pwd)/$name/" >> $GITHUB_PATH
-            echo "$(pwd)/$name/bin" >> $GITHUB_PATH
-          done
-
-          echo "Toolchains ready"
-
-      - name: "😎 Set build arguments"
-        id: generate-args
-        working-directory: ./${{ env.kernelDir }}
-        env:
-          params: "${{ toJSON(matrix.repos.params) }}"
+      # ─── 4. XClang 22.1.2 ────────────────────────────────────
+      - name: 🛠️ Setup XClang / LLVM 22.1.2
         run: |
-          ARCH=$(echo $params | jq -r ".ARCH")
-          CROSS_COMPILE=$(echo $params | jq -r ".CROSS_COMPILE")
-          CROSS_COMPILE_COMPAT=$(echo $params | jq -r ".CROSS_COMPILE_COMPAT")
-          CLANG_TRIPLE=$(echo $params | jq -r ".CLANG_TRIPLE")
-          AR=$(echo $params | jq -r ".AR")
-          CC=$(echo $params | jq -r ".CC")
+          mkdir -p $HOME/toolchains/clang
+          echo "Downloading XClang / LLVM 22.1.2..."
+          wget -q --show-progress \
+            "${{ env.CLANG_URL }}" \
+            -O clang.tar.xz
+          tar -xf clang.tar.xz -C $HOME/toolchains/clang --strip-components=1
+          rm clang.tar.xz
+          echo "$HOME/toolchains/clang/bin" >> $GITHUB_PATH
+          echo "✅ Toolchain ready:"
+          $HOME/toolchains/clang/bin/clang --version
 
-          echo "ARCH=$ARCH" >> $GITHUB_ENV
+      # ─── 5. Defconfig ─────────────────────────────────────────
+      - name: 🔧 Generate defconfig
+        working-directory: kernel
+        run: |
+          export PATH="$HOME/toolchains/clang/bin:$PATH"
 
-          KERNEL_PATH=$(pwd)/${{ env.kernelName }}
-          OUT_PATH=$KERNEL_PATH/${{ env.OUT_DIR }}
-
-          mkdir -p $OUT_PATH
-
-          args="-j$(nproc --all)"
-          args="$args O=$OUT_PATH"
-
-          if [ -n "$ARCH" ]; then
-            args="$args ARCH=$ARCH"
-          fi
-          if [ -n "$CROSS_COMPILE" ]; then
-            args="$args CROSS_COMPILE=$CROSS_COMPILE"
-          fi
-          if [ -n "$CLANG_TRIPLE" ]; then
-            args="$args CLANG_TRIPLE=$CLANG_TRIPLE"
-          fi
-          if [ -n "$CROSS_COMPILE_COMPAT" ]; then
-            args="$args CROSS_COMPILE_ARM32=$CROSS_COMPILE_COMPAT"
-          fi
-          if [ -n "$AR" ]; then
-            args="$args AR=$AR"
-          fi
-          if [ -n "$CC" ]; then
-            args="$args CC=$CC"
+          # Cek apakah defconfig ada, fallback jika tidak
+          if [ -f "arch/arm64/configs/vendor/peridot_defconfig" ]; then
+            DEFCONFIG="vendor/peridot_defconfig"
+          elif [ -f "arch/arm64/configs/peridot_defconfig" ]; then
+            DEFCONFIG="peridot_defconfig"
+          else
+            echo "⚠️ peridot_defconfig not found, listing available configs:"
+            ls arch/arm64/configs/ | grep -i peridot || ls arch/arm64/configs/
+            exit 1
           fi
 
-          echo "args=$args"
-          echo "args=$args" >> $GITHUB_OUTPUT
+          echo "Using defconfig: $DEFCONFIG"
+          echo "DEFCONFIG=$DEFCONFIG" >> $GITHUB_ENV
 
-      - name: "🧹 Clean output"
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+          make -j$(nproc) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            $DEFCONFIG
+
+          echo "✅ Defconfig generated"
+
+      # ─── 6. Compile kernel ────────────────────────────────────
+      - name: 🏗️ Compile kernel
+        working-directory: kernel
         run: |
-          rm -rf ${{ env.OUT_DIR }}
+          export PATH="$HOME/toolchains/clang/bin:$PATH"
+          BUILD_START=$(date +%s)
 
-      - name: "👍 Configure kernel (GKI + Peridot)"
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        env:
-          args: ${{ steps.generate-args.outputs.args }}
-        run: |
-          echo "Using args: $args"
+          make -j$(nproc) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            2>&1 | tee ../build.log
 
-          # Base config
-          make $args gki_defconfig
+          BUILD_END=$(date +%s)
+          ELAPSED=$(( BUILD_END - BUILD_START ))
+          BUILD_TIME=$(printf '%02dm:%02ds' $((ELAPSED/60)) $((ELAPSED%60)))
+          echo "BUILD_TIME=${BUILD_TIME}" >> $GITHUB_ENV
 
-          # Merge vendor config INTO OUT
-          cat arch/arm64/configs/vendor/peridot_GKI.config >> ${{ env.OUT_DIR }}/.config
+          if [ ! -f out/arch/arm64/boot/Image.gz ]; then
+            echo "❌ Build FAILED — Image.gz not found!"
+            tail -100 ../build.log
+            exit 1
+          fi
 
-          # Finalize config
-          make $args olddefconfig
+          echo "✅ Build done in ${BUILD_TIME}"
+          ls -lh out/arch/arm64/boot/
 
-      - name: "🎶 Build kernel"
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        env:
-          args: ${{ steps.generate-args.outputs.args }}
-        run: |
-          make $args
-
-      - name: "🎶 Build kernel (verbose)"
-        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        env:
-         args: ${{ steps.generate-args.outputs.args }}
-        run: |
-         set -e
-         make $args V=1 2>&1 | tee build.log
-
-      - name: "📦 Upload Kernel Image"
+      - name: 📤 Upload build log on failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Image-Peridot-GKI
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image
-          if-no-files-found: ignore
-          retention-days: 7
+          name: build-log-${{ steps.vars.outputs.SHORT_SHA }}
+          path: build.log
 
-      - name: "📦 Upload Image.gz"
+      # ─── 7. Package AnyKernel3 ────────────────────────────────
+      - name: 📦 Clone AnyKernel3
+        run: |
+          git clone --depth=1 \
+            -b ${{ env.ANYKERNEL_BRANCH }} \
+            ${{ env.ANYKERNEL_REPO }} \
+            AnyKernel3
+
+      - name: 🗜️ Package kernel zip
+        id: package
+        run: |
+          ZIPNAME="${{ steps.vars.outputs.ZIPNAME }}"
+
+          cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
+          [ -f kernel/out/arch/arm64/boot/dtb.img ]  && cp kernel/out/arch/arm64/boot/dtb.img  AnyKernel3/ && echo "✅ DTB included"
+          [ -f kernel/out/arch/arm64/boot/dtbo.img ] && cp kernel/out/arch/arm64/boot/dtbo.img AnyKernel3/ && echo "✅ DTBO included"
+
+          cd AnyKernel3
+          zip -r9 "../${ZIPNAME}" . \
+            --exclude="*.git*" --exclude="*.github*" \
+            --exclude="*.md"   --exclude="LICENSE"
+          cd ..
+
+          sha256sum "${ZIPNAME}" > "${ZIPNAME}.sha256"
+          SIZE=$(du -sh "${ZIPNAME}" | cut -f1)
+          SHA=$(awk '{print $1}' "${ZIPNAME}.sha256")
+
+          echo "ZIP_SIZE=$SIZE" >> $GITHUB_OUTPUT
+          echo "ZIP_SHA=$SHA"   >> $GITHUB_OUTPUT
+
+          echo ""                                           >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Build Result"                        >> $GITHUB_STEP_SUMMARY
+          echo "| Key | Value |"                            >> $GITHUB_STEP_SUMMARY
+          echo "|-----|-------|"                            >> $GITHUB_STEP_SUMMARY
+          echo "| File | \`${ZIPNAME}\` |"                  >> $GITHUB_STEP_SUMMARY
+          echo "| Size | ${SIZE} |"                         >> $GITHUB_STEP_SUMMARY
+          echo "| SHA256 | \`${SHA}\` |"                    >> $GITHUB_STEP_SUMMARY
+          echo "| Build Time | ${{ env.BUILD_TIME }} |"    >> $GITHUB_STEP_SUMMARY
+
+      # ─── 8. Upload artifact ───────────────────────────────────
+      - name: 📎 Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Image.gz-Peridot-GKI
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz
-          if-no-files-found: ignore
+          name: ${{ steps.vars.outputs.ZIPNAME }}
+          path: |
+            ${{ steps.vars.outputs.ZIPNAME }}
+            ${{ steps.vars.outputs.ZIPNAME }}.sha256
           retention-days: 7
 
-      - name: "📦 Upload DTB"
-        uses: actions/upload-artifact@v4
+      # ─── 9. GitHub Release (manual only) ─────────────────────
+      - name: 🚀 Create GitHub Release
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.release == 'true' &&
+          github.event.inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
         with:
-          name: dtb-Peridot-GKI
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtb
-          if-no-files-found: ignore
-          retention-days: 7
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: "🌙 SleepX Kernel ${{ github.event.inputs.release_tag }} | POCO F6 (peridot)"
+          body: |
+            ## 🌙 SleepX Kernel ${{ github.event.inputs.release_tag }}
 
-      - name: "📦 Upload DTBO.img"
-        uses: actions/upload-artifact@v4
-        with:
-          name: dtbo.img-Peridot-GKI
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/arm64/boot/dtbo.img
-          if-no-files-found: ignore
-          retention-days: 7
+            | Info | Detail |
+            |------|--------|
+            | **Device** | Xiaomi POCO F6 / Redmi Turbo 3 (SM8635 / peridot) |
+            | **Source** | [LineageOS/android_kernel_xiaomi_sm8635](https://github.com/LineageOS/android_kernel_xiaomi_sm8635) @ `lineage-22.2` |
+            | **Compiler** | XClang / LLVM 22.1.2 |
+            | **Build Date** | ${{ steps.vars.outputs.DATE }} |
+            | **Android** | 14 - 16 |
+            | **Build Time** | ${{ env.BUILD_TIME }} |
+            | **SHA256** | `${{ steps.package.outputs.ZIP_SHA }}` |
+
+            ---
+
+            ### 📋 Changelog
+            ${{ github.event.inputs.release_notes || 'See commit history for changes.' }}
+
+            ---
+
+            ### ⚡ Features
+            - **Networking:** BBRplus, BBRv3, TCP Brutal, TCP Fast Open
+            - **Feature:** NTSync, Wireguard, ADIOS I/O Scheduler
+            - **Memory:** Backport per-memcg reclaim & vmpressure optimization
+            - **Charging:** `charging_enabled` node & fastcharge mode 1 detection
+            - **Hardware:** Dual fuel gauge support (SLAVE_CHIP guard)
+            - **Touch/Display:** Xiaomi touch driver, fold_status, FOD finger state node
+
+            ---
+
+            ### 📲 Cara Install
+            1. Download zip di bawah
+            2. Boot ke custom recovery (TWRP / OrangeFox)
+            3. Flash zip → Reboot
+
+            > ⚠️ Butuh unlocked bootloader + custom recovery
+
+            ---
+
+            ### 🔐 Verifikasi Integritas
+            ```bash
+            sha256sum -c ${{ steps.vars.outputs.ZIPNAME }}.sha256
+            ```
+          files: |
+            ${{ steps.vars.outputs.ZIPNAME }}
+            ${{ steps.vars.outputs.ZIPNAME }}.sha256
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
