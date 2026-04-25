@@ -202,27 +202,27 @@ jobs:
               cp "$GITHUB_WORKSPACE/anykernel.sh" AnyKernel3/anykernel.sh
               echo "✅ anykernel.sh dari repo ini dipakai"
             else
-              # Tulis anykernel.sh minimal untuk peridot
-              cat > AnyKernel3/anykernel.sh << 'AKEOF'
-properties() { '
-kernel.string=SleepX Kernel by ImSleep
-do.devicecheck=1
-do.modules=0
-do.systemless=0
-do.cleanup=1
-do.cleanuponabort=0
-device.name1=peridot
-supported.versions=14 - 16
-'; }
-block=boot
-is_slot_device=auto
-ramdisk_compression=auto
-patch_vbmeta_flag=auto
-no_magisk_check=1
-. tools/ak3-core.sh
-split_boot
-flash_boot
-AKEOF
+              # Tulis anykernel.sh minimal untuk peridot menggunakan printf
+              printf '%s\n' \
+                "properties() { '" \
+                "kernel.string=SleepX Kernel by ImSleep" \
+                "do.devicecheck=1" \
+                "do.modules=0" \
+                "do.systemless=0" \
+                "do.cleanup=1" \
+                "do.cleanuponabort=0" \
+                "device.name1=peridot" \
+                "supported.versions=14 - 16" \
+                "'; }" \
+                "block=boot" \
+                "is_slot_device=auto" \
+                "ramdisk_compression=auto" \
+                "patch_vbmeta_flag=auto" \
+                "no_magisk_check=1" \
+                ". tools/ak3-core.sh" \
+                "split_boot" \
+                "flash_boot" \
+                > AnyKernel3/anykernel.sh
               echo "✅ anykernel.sh minimal ditulis otomatis"
             fi
           fi
