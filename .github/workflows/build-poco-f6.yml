@@ -27,11 +27,11 @@ on:
 env:
   # ── Kernel source ────────────────────────────────────────────
   KERNEL_REPO: https://github.com/LineageOS/android_kernel_xiaomi_sm8635
-  KERNEL_BRANCH: lineage-23.2
+  KERNEL_BRANCH: lineage-22.2
   KERNEL_DEFCONFIG: vendor/peridot_defconfig
 
   # ── Toolchain: XClang / LLVM 22.1.2 ─────────────────────────
-  CLANG_URL: https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.2/clang+llvm-22.1.2-x86_64-linux-gnu.tar.xz
+  CLANG_URL: https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.2/LLVM-22.1.2-Linux-X64.tar.xz
 
   # ── AnyKernel3 ───────────────────────────────────────────────
   ANYKERNEL_REPO: https://github.com/sleep-bugy/SleepX-AK3
@@ -185,10 +185,47 @@ jobs:
       # ─── 7. Package AnyKernel3 ────────────────────────────────
       - name: 📦 Clone AnyKernel3
         run: |
-          git clone --depth=1 \
-            -b ${{ env.ANYKERNEL_BRANCH }} \
-            ${{ env.ANYKERNEL_REPO }} \
-            AnyKernel3
+          # Coba clone repo AnyKernel3 utama (SleepX-AK3)
+          if git clone --depth=1 \
+              -b ${{ env.ANYKERNEL_BRANCH }} \
+              ${{ env.ANYKERNEL_REPO }} \
+              AnyKernel3 2>/dev/null; then
+            echo "✅ Cloned ${{ env.ANYKERNEL_REPO }}"
+          else
+            echo "⚠️ Repo AnyKernel3 tidak bisa diakses, fallback ke osm0sis/AnyKernel3..."
+            git clone --depth=1 \
+              https://github.com/osm0sis/AnyKernel3 \
+              AnyKernel3
+
+            # Inject anykernel.sh dari repo ini kalau ada
+            if [ -f "$GITHUB_WORKSPACE/anykernel.sh" ]; then
+              cp "$GITHUB_WORKSPACE/anykernel.sh" AnyKernel3/anykernel.sh
+              echo "✅ anykernel.sh dari repo ini dipakai"
+            else
+              # Tulis anykernel.sh minimal untuk peridot
+              cat > AnyKernel3/anykernel.sh << 'AKEOF'
+properties() { '
+kernel.string=SleepX Kernel by ImSleep
+do.devicecheck=1
+do.modules=0
+do.systemless=0
+do.cleanup=1
+do.cleanuponabort=0
+device.name1=peridot
+supported.versions=14 - 16
+'; }
+block=boot
+is_slot_device=auto
+ramdisk_compression=auto
+patch_vbmeta_flag=auto
+no_magisk_check=1
+. tools/ak3-core.sh
+split_boot
+flash_boot
+AKEOF
+              echo "✅ anykernel.sh minimal ditulis otomatis"
+            fi
+          fi
 
       - name: 🗜️ Package kernel zip
         id: package
