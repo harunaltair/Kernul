@@ -152,6 +152,15 @@ jobs:
 
           echo "✅ Defconfig siap (gki_defconfig + peridot_GKI.config)"
 
+          # Fix: disable MTD_OOPS — undefined symbol pwrkey_irq_notifier_list
+          scripts/config --file out/.config --disable CONFIG_MTD_OOPS
+          make -j$(nproc) O=out ARCH=arm64 CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            olddefconfig
+          echo "✅ CONFIG_MTD_OOPS disabled"
+
       # ─── 6. Compile kernel ────────────────────────────────────
       - name: 🏗️ Compile kernel
         working-directory: kernel
