@@ -58,7 +58,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             bc bison build-essential ca-certificates cpio flex git \
             kmod libelf-dev libssl-dev make python3 unzip wget zip zstd \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu \
+            dwarves
 
       # ─── 2. Build variables ───────────────────────────────────
       - name: 🔖 Set build variables
@@ -142,24 +143,26 @@ jobs:
             exit 1
           fi
 
-          # Step 3: Finalize config
-          echo "Step 3: Finalizing config..."
-          make -j$(nproc) O=out ARCH=arm64 CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            olddefconfig
+          # Step 3: Apply config fixes sebelum finalize
+          echo "Step 3: Applying config fixes..."
 
-          echo "✅ Defconfig siap (gki_defconfig + peridot_GKI.config)"
-
-          # Fix: disable MTD_OOPS — undefined symbol pwrkey_irq_notifier_list
+          # Fix 1: disable MTD_OOPS — undefined symbol pwrkey_irq_notifier_list
           scripts/config --file out/.config --disable CONFIG_MTD_OOPS
-          make -j$(nproc) O=out ARCH=arm64 CC=clang \
+
+          # Fix 2: disable DEBUG_INFO_BTF — pahole di ubuntu-22.04 terlalu lama (< 1.16)
+          # sehingga tidak support BTF generation, selalu disable agar vmlinux tidak gagal link
+          scripts/config --file out/.config             --disable CONFIG_DEBUG_INFO_BTF             --disable CONFIG_DEBUG_INFO_BTF_MODULES
+          echo "✅ CONFIG_DEBUG_INFO_BTF disabled"
+
+          # Step 4: Finalize — yes "" untuk jawab prompt baru secara non-interactive
+          echo "Step 4: Finalizing config..."
+          yes "" | make -j$(nproc) O=out ARCH=arm64 CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            olddefconfig
-          echo "✅ CONFIG_MTD_OOPS disabled"
+            olddefconfig 2>&1 | grep -v "^#" || true
+
+          echo "✅ Defconfig final siap"
 
       # ─── 6. Compile kernel ────────────────────────────────────
       - name: 🏗️ Compile kernel
@@ -168,6 +171,8 @@ jobs:
           export PATH="$HOME/toolchains/clang/bin:$PATH"
           BUILD_START=$(date +%s)
 
+          # Pipe ke tee tapi tetap capture exit code make (bukan tee)
+          set -o pipefail
           make -j$(nproc) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -183,6 +188,7 @@ jobs:
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
             2>&1 | tee ../build.log
+          MAKE_EXIT=${PIPESTATUS[0]}
 
           BUILD_END=$(date +%s)
           ELAPSED=$(( BUILD_END - BUILD_START ))
@@ -190,7 +196,8 @@ jobs:
           echo "BUILD_TIME=${BUILD_TIME}" >> $GITHUB_ENV
 
           if [ ! -f out/arch/arm64/boot/Image.gz ]; then
-            echo "❌ Build FAILED — Image.gz not found!"
+            echo "❌ Build FAILED — Image.gz not found! (make exit: $MAKE_EXIT)"
+            echo "--- Last 100 lines of build log ---"
             tail -100 ../build.log
             exit 1
           fi
